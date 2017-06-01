@@ -1,0 +1,92 @@
+#!/bin/bash
+pname=$(basename "$0")
+usage="$pname list [-{d|e|s|3}] [-u] [FILTER]
+$pname apk PKGNAME [...]
+$pname data PKGNAME [...]
+
+OPTIONS
+  $pname list [-{d|e|s|3}] [-u] [FILTER]
+    List Android app's package names contains a string:FILTER to stdout.
+    Suboptions:
+      -d: filter to only show disabled packages
+      -e: filter to only show enabled packages
+      -s: filter to only show system packages
+      -3: filter to only show third party packages
+      -u: also include uninstalled packages
+    Notes:
+      default: show all packages
+      -d -e: same as all packages
+      -3 -s: same as all packages
+  $pname apk PKGNAME [...]
+    Copy Android app's APK files for PKGNAMEs to current directory.
+    Each of APKs has the name as PKGNAME.apk, not the original.
+  $pname data PKGNAME [...]
+    Get Android app's data images for PKGNAMEs to current directory.
+    Each of data files has the name as PKGNAME.ab, which is get by the
+    'adb backup' command.
+"
+
+dotfile=~/.android-apps
+
+## workaround for debug adb-sendkey
+which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
+
+## list apps using pm or cmd package
+list_package_names() {
+  unset opts
+  while true; do
+    case "$1" in
+    -d|-di|-dis|-disa|-disab|-disabl|-disable|-disabled) opts="$opts -d"; shift;;
+    -e|-en|-ena|-enab|-enabl|-enable|-enabled) opts="$opts -e"; shift;;
+    -s|-sy|-sys|-syst|-syste|-system) opts="$opts -s"; shift;;
+    -3|-3r|-3rd|-3rdp|-3rdpa|-3rdpar|-3rdpart|-3rdparty) opts="$opts -3"; shift;;
+    -u|-un|-uni|-unin|-unins|-uninst|-uninsta|-uninstal|-uninstall|-uninstalle|-uninstalled) opts="$opts -u"; shift;;
+    -*) echo "$pname list: $1: unknown option.">&2; exit 3;;
+    *) break;;
+    esac
+  done
+  
+  adb shell pm list packages$opts "$@" | sed 's/^package://' | sort
+}
+
+## get each apps' apk using adb pull
+get_apks() {
+  test $# -eq 0 && { echo "$pname apk: Package name(s) required.">&2; return;}
+  for pkg; do
+    echo -n "$pkg: ">&2
+    apkPath=$(adb shell pm path "$pkg" | sed 's/^package://')
+    adb pull "$apkPath" &&
+    mv $(basename "$apkPath") "$pkg.apk"
+    echo >&2
+  done | grep '^[^[]'
+}
+
+## get each apps' data using adb backup
+get_data() {
+  test $# -eq 0 && { echo "$pname data: Package name(s) required.">&2;return;}
+  source "$dotfile"
+  for pkg; do
+    echo -n "$pkg: ">&2
+    adb backup -f "$pkg.ab" -noapk -noobb -noshared "$pkg" &
+    sleep 1
+    adb-sendkey -v "$android_backup_password<tab><tab><space>"
+    echo >&2
+  done
+}
+
+
+case "$1" in
+-*) echo "$pname: $1: unknown option.">&2; shift; exit 1;;
+esac
+
+test $# -eq 0 && { echo "$usage"; exit 0; }
+
+cmd="$1"
+shift
+case "$cmd" in
+list) list_package_names "$@";;
+apk) get_apks "$@";;
+data) get_data "$@";;
+*) echo "$pname: $cmd: unknown command.">&2; exit 2;;
+esac
+exit $?

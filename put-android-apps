@@ -1,0 +1,68 @@
+#!/bin/bash
+pname=$(basename "$0")
+usage="$pname list
+$pname apk
+$pname data"
+
+dotfile=~/.android-apps
+
+## workaround for debug adb-sendkey
+which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
+
+## put apps' apk using adb install or pm install
+put_apks() {
+  test $# -eq 0 && { echo "$pname apk: .apk file(s) required.">&2; return; }
+  
+  #adb install-multiple "$@"
+  
+  unset opts
+  while true; do
+    case "$1" in
+    -*) opts="$opts $1"; shift;;
+    *) break;;
+    esac
+  done
+  
+  for pkg; do
+    echo -n "$pkg: ">&2
+    adb install$opts "$pkg"
+  done
+}
+
+## put apps' data using adb restore
+put_data() {
+  test $# -eq 0 && { echo "$pname data: .ab file(s) required.">&2; return; }
+  source "$dotfile"
+  unset opts
+  while true; do
+    case "$1" in
+    -*) opts="$opts $1"; shift;;
+    *) break;;
+    esac
+  done
+  
+  for pkg; do
+    echo -n "$pkg: ">&2
+    adb restore$opts "$pkg" &
+    sleep 1
+    adb-sendkey -v "$android_backup_password<tab><tab><space>"
+    echo >&2
+  done
+}
+
+
+case "$1" in
+-*) echo "$pname: $1: unknown option.">&2; shift; exit 1;;
+esac
+
+test $# -eq 0 && { echo "$usage"; exit 0; }
+
+cmd="$1"
+shift
+case "$cmd" in
+#list) list_package_names;;
+apk) put_apks "$@";;
+data) put_data "$@";;
+*) echo "$pname: $cmd: unknown command.">&2; exit 2;;
+esac
+exit $?

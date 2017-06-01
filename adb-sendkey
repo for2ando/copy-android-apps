@@ -1,0 +1,127 @@
+#!/bin/bash
+pnam=$(basename "$0")
+usage="$pnam [-b] [-n] [-v] KeySequence
+$pnam {-h|--help}
+"
+
+adb_shell_input_keyevent() {
+  $verbose && echo "adb shell input keyevent $1"
+  $dryrun || adb shell -n input keyevent $1
+}
+
+adb_sendkey() {
+  if $buffered; then
+    $verbose && echo "buffering $1"
+    buffer="$buffer $1"
+  else
+    adb_shell_input_keyevent $1
+  fi
+}
+
+buffer=''
+buffered=false
+dryrun=false
+verbose=false
+while true; do
+  case "$1" in
+  -b) buffered=true; shift;;
+  -h|--help) echo "$usage"; exit 0;;
+  -n) dryrun=true; verbose=true; shift;;
+  -v) verbose=true; shift;;
+  -*) echo "$pnam: $1: unknown option.">&2; shift; exit 1;;
+  *) break;;
+  esac
+done
+
+test $# -eq 0 && { echo "$usage"; exit 0; }
+
+while read -N 1 cc; do
+  test -z $cc && break
+  case $cc in
+  [0-9]) adb_sendkey $(($cc+7));;
+  [a-z]) adb_sendkey $(($(echo -n B|od -An -d)-68));;
+  [A-Z]) adb_sendkey 59
+         adb_sendkey $(($(echo -n B|od -An -d)-36));;
+  \<)
+    read -d \> token || {
+      echo "$pnam: broken key symbol; it must be surrounded with < and >.">&2
+      exit 2
+    }
+    case "${token,,}" in
+    xmenu) adb_sendkey 1;;
+    soft_right) adb_sendkey 2;;
+    home) adb_sendkey 3;;
+    back) adb_sendkey 4;;
+    call) adb_sendkey 5;;
+    endcall) adb_sendkey 6;;
+    dpad_up) adb_sendkey 19;;
+    dpad_down) adb_sendkey 20;;
+    dpad_left) adb_sendkey 21;;
+    dpad_right) adb_sendkey 22;;
+    dpad_center) adb_sendkey 23;;
+    volume_up) adb_sendkey 24;;
+    volume_down) adb_sendkey 25;;
+    power) adb_sendkey 26;;
+    camera) adb_sendkey 27;;
+    clear) adb_sendkey 28;;
+    alt_left) adb_sendkey 57;;
+    alt_right) adb_sendkey 58;;
+    shift_left) adb_sendkey 59;;
+    shift_right) adb_sendkey 60;;
+    tab) adb_sendkey 61;;
+    space) adb_sendkey 62;;
+    sym) adb_sendkey 63;;
+    explorer) adb_sendkey 64;;
+    envelope) adb_sendkey 65;;
+    enter) adb_sendkey 66;;
+    del) adb_sendkey 67;;
+    num|numlock) adb_sendkey 78;;
+    headsethook) adb_sendkey 79;;
+    focus) adb_sendkey 80;;
+    menu) adb_sendkey 82;;
+    notification) adb_sendkey 83;;
+    search) adb_sendkey 84;;
+    star) adb_sendkey 17;;
+    pound) adb_sendkey 18;;
+    comma) adb_sendkey 55;;
+    period) adb_sendkey 56;;
+    grave) adb_sendkey 68;;
+    minus) adb_sendkey 69;;
+    equals) adb_sendkey 70;;
+    left_bracket) adb_sendkey 71;;
+    right_bracket) adb_sendkey 72;;
+    backslash) adb_sendkey 73;;
+    semicoron) adb_sendkey 74;;
+    apostrophe) adb_sendkey 75;;
+    slash) adb_sendkey 76;;
+    at) adb_sendkey 77;;
+    plus) adb_sendkey 81;;
+    *) echo "$pnam: <${token,,}>: unknown key symbol.">&2; exit 4;;
+    esac;;
+  \*) adb_sendkey 17;;
+  \#) adb_sendkey 18;;
+  ,) adb_sendkey 55;;
+  .) adb_sendkey 56;;
+  \ ) adb_sendkey 62;;
+  \`) adb_sendkey 68;;
+  -) adb_sendkey 69;;
+  =) adb_sendkey 70;;
+  \[) adb_sendkey 71;;
+  \]) adb_sendkey 72;;
+  \\) adb_sendkey 73;;
+  \;) adb_sendkey 74;;
+  \') adb_sendkey 75;;
+  /) adb_sendkey 76;;
+  @) adb_sendkey 77;;
+  +) adb_sendkey 81;;
+  *) echo "$pnam: '$cc': unknown key char.">&2; exit 3;;
+  esac
+done <<EOS
+$*
+EOS
+
+$buffered && {
+  for cc in $buffer; do
+    adb_shell_input_keyevent $cc
+  done
+}
