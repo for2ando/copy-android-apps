@@ -67,9 +67,10 @@ get_data() {
   source "$dotfile"
   for pkg; do
     echo -n "$pkg: ">&2
-    adb backup -f "$pkg.ab" -noapk -noobb -noshared "$pkg" &
+    adb backup -f "$pkg.ab" -noapk -noobb -noshared "$pkg" >/dev/null &
     sleep 1
-    adb-sendkey -v "$android_backup_password<tab><tab><space>"
+    adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+    wait
     echo >&2
   done
 }
