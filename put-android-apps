@@ -1,8 +1,17 @@
 #!/bin/bash
 pname=$(basename "$0")
-usage="$pname list
-$pname apk
-$pname data"
+usage="$pname apk PKGNAME [...]
+$pname ab PKGNAME [...]
+$pname data PKGNAME [...]
+
+OPTIONS
+  $pname apk PKGNAME [...]
+    Install Android app's APK files for PKGNAMEs to a remote Android device.
+  $pname {ab|data} PKGNAME [...]
+    Put(install) Android app's data images for PKGNAMEs to a remote Android
+    device.
+    Each of data files is one get by the 'adb backup' command.
+"
 
 dotfile=~/.android-apps
 
@@ -61,9 +70,8 @@ test $# -eq 0 && { echo "$usage"; exit 0; }
 cmd="$1"
 shift
 case "$cmd" in
-#list) list_package_names;;
 apk) put_apks "$@";;
-data) put_data "$@";;
+ab|data) put_data "$@";;
 *) echo "$pname: $cmd: unknown command.">&2; exit 2;;
 esac
 exit $?

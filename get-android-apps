@@ -2,6 +2,7 @@
 pname=$(basename "$0")
 usage="$pname list [-{d|e|s|3}] [-u] [FILTER]
 $pname apk PKGNAME [...]
+$pname ab PKGNAME [...]
 $pname data PKGNAME [...]
 
 OPTIONS
@@ -20,7 +21,7 @@ OPTIONS
   $pname apk PKGNAME [...]
     Copy Android app's APK files for PKGNAMEs to current directory.
     Each of APKs has the name as PKGNAME.apk, not the original.
-  $pname data PKGNAME [...]
+  $pname {ab|data} PKGNAME [...]
     Get Android app's data images for PKGNAMEs to current directory.
     Each of data files has the name as PKGNAME.ab, which is get by the
     'adb backup' command.
@@ -87,7 +88,7 @@ shift
 case "$cmd" in
 list) list_package_names "$@";;
 apk) get_apks "$@";;
-data) get_data "$@";;
+ab|data) get_data "$@";;
 *) echo "$pname: $cmd: unknown command.">&2; exit 2;;
 esac
 exit $?
