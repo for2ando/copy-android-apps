@@ -32,6 +32,10 @@ dotfile=~/.android-apps
 ## workaround for debug adb-sendkey
 which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
 
+adb_shell() {
+  adb shell "$@" | sed -b 's/\r$//;s/\r$//'
+}
+
 ## list apps using pm or cmd package
 list_package_names() {
   unset opts
@@ -47,7 +51,7 @@ list_package_names() {
     esac
   done
   
-  adb shell pm list packages$opts "$@" | sed 's/^package://' | sort
+  adb_shell pm list packages$opts "$@" | sed 's/^package://' | sort
 }
 
 ## get each apps' apk using adb pull
@@ -55,7 +59,7 @@ get_apks() {
   test $# -eq 0 && { echo "$pname apk: Package name(s) required.">&2; return;}
   for pkg; do
     echo -n "$pkg: ">&2
-    apkPath=$(adb shell pm path "$pkg" | sed 's/^package://')
+    apkPath=$(adb_shell pm path "$pkg" | sed 's/^package://')
     adb pull "$apkPath" &&
     mv $(basename "$apkPath") "$pkg.apk"
     echo >&2
