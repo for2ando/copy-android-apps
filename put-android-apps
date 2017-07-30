@@ -18,6 +18,10 @@ dotfile=~/.android-apps
 ## workaround for debug adb-sendkey
 which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
 
+adb_shell() {
+  adb shell "$@" | sed -b 's/\r$//;s/\r$//'
+}
+
 ## put apps' apk using adb install or pm install
 put_apks() {
   test $# -eq 0 && { echo "$pname apk: .apk file(s) required.">&2; return; }
@@ -32,9 +36,9 @@ put_apks() {
     esac
   done
   
-  for pkg; do
-    echo -n "$pkg: ">&2
-    adb install$opts "$pkg"
+  for apk; do
+    echo -n "$apk: ">&2
+    adb install$opts "$(cygpath -w $apk)"
   done
 }
 
@@ -50,9 +54,9 @@ put_data() {
     esac
   done
   
-  for pkg; do
-    echo -n "$pkg: ">&2
-    adb restore$opts "$pkg" >/dev/null &
+  for ab; do
+    echo -n "$ab: ">&2
+    adb restore$opts "$(cygpath -w $ab)" >/dev/null &
     sleep 1
     adb-sendkey -v "$android_backup_password<tab><tab><enter>"
     wait
