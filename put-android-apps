@@ -1,16 +1,23 @@
 #!/bin/bash
 pname=$(basename "$0")
-usage="$pname apk PKGNAME [...]
-$pname ab PKGNAME [...]
-$pname data PKGNAME [...]
+usage="$pname [OPTIONS] apk APKFILENAME [...]
+$pname [OPTIONS] ab ABFILENAME [...]
+$pname [OPTIONS] data ARCHIVEFILENAME [...]
 
 OPTIONS
-  $pname apk PKGNAME [...]
-    Install Android app's APK files for PKGNAMEs to a remote Android device.
-  $pname {ab|data} PKGNAME [...]
-    Put(install) Android app's data images for PKGNAMEs to a remote Android
-    device.
-    Each of data files is one get by the 'adb backup' command.
+  -s SERIAL
+    use device with given serial number (overrides \$ANDROID_SERIAL), same as adb command
+
+SUBCOMAMANDS
+  $pname apk APKFILENAME [...]
+    Install Android app's APK files to a remote Android device.
+  $pname ab ABFILENAME [...]
+    Install Android app's backuped data image files to a remote Android device.
+    Each of data image files is one get by the 'adb backup' command.
+  $pname data ARCHIVEFILENAME [...]
+    Install Android app's data files into the /data/data/*/ directory on
+    a remote Android device.
+    Each of data files is one get by the 'get-android-apps data' command.
 "
 
 dotfile=~/.android-apps
@@ -18,15 +25,47 @@ dotfile=~/.android-apps
 ## workaround for debug adb-sendkey
 which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
 
-adb_shell() {
-  adb shell "$@" | sed -b 's/\r$//;s/\r$//'
+## functions
+##
+
+list_adb_devices() {
+  adb devices | grep -v -e '^List of devices attached$' -e '^$'
+}
+
+number_of_adb_devices() {
+  list_adb_devices | if [ -n "$serial" ]; then grep "^$serial"; else cat -; fi | wc -l
+}
+
+_adb() {
+  adb ${serial:+-s $serial} "$@"
+}
+
+## definition of adb_shell()
+source ./adb_shell
+
+remote_cmd_not_exist() {
+  rc=$(adb_echo_result "$@")
+  test "$rc" = "127"
+}
+
+globmatch() {
+  case "$1" in
+  $2) true;;
+  *) false;;
+  esac
+}
+
+remote_adb_is_rooted() {
+  globmatch "$(adb_shell id)" 'uid=0\(*'
+}
+
+remote_su_not_exist() {
+  remote_cmd_not_exist su -c echo
 }
 
 ## put apps' apk using adb install or pm install
 put_apks() {
   test $# -eq 0 && { echo "$pname apk: .apk file(s) required.">&2; return; }
-  
-  #adb install-multiple "$@"
   
   unset opts
   while true; do
@@ -38,14 +77,16 @@ put_apks() {
   
   for apk; do
     echo -n "$apk: ">&2
+    test -s "$apk" || { echo "$apk: file not exist or size=0.">&2; continue; }
     adb install$opts "$(cygpath -w $apk)"
   done
 }
 
-## put apps' data using adb restore
-put_data() {
-  test $# -eq 0 && { echo "$pname data: .ab file(s) required.">&2; return; }
+## put apps' data images using adb restore
+put_ab() {
+  test $# -eq 0 && { echo "$pname ab: .ab file(s) required.">&2; return; }
   source "$dotfile"
+
   unset opts
   while true; do
     case "$1" in
@@ -54,8 +95,13 @@ put_data() {
     esac
   done
   
+  tty -s && {
+    echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
+    read
+  }
   for ab; do
     echo -n "$ab: ">&2
+    test -s "$ab" || { echo "$ab: file not exist or size=0.">&2; continue; }
     adb restore$opts "$(cygpath -w $ab)" >/dev/null &
     sleep 1
     adb-sendkey -v "$android_backup_password<tab><tab><enter>"
@@ -64,18 +110,87 @@ put_data() {
   done
 }
 
+## put apps' data files into /data/data/PKGNAME/
+put_data() {
+  test $# -eq 0 && { echo "$pname data: archive file(s) required.">&2; return;}
+  source "$dotfile"
 
+  unset opts
+  removep=false
+  while true; do
+    case "$1" in
+    -r) removep=true; shift;;
+    -*) opts="$opts $1"; shift;;
+    *) break;;
+    esac
+  done
+  
+  remote_tmp=/data/local/tmp
+  for archive; do
+    echo -n "$archive: ">&2
+    pkg=$(basename ${archive%.tar.gz})
+    test -s "$archive" || { echo "$archive: file not exist or size=0.">&2; continue; }
+    datadir=$(adb_shell pm dump "$pkg"|sed -n '/^ *dataDir=/{s///;p;q;}')
+    owner=$(adb_shell su -c ls -ld "$datadir" | awk '{print $2 ":" $3;}')
+    
+    remote_archive="$remote_tmp/$(basename $archive)"
+    rm_remote_archive="adb shell rm -f $remote_archive"
+    trap "$rm_remote_archive" 2
+    adb push "$archive" "$remote_tmp"
+    $removep && adb_shell su -c rm -rf "$datadir/*" "$datadir/.[!.]*"
+    adb_shell su -c tar -zxvkf "$remote_archive" -C "$datadir"
+    trap - 2
+    $rm_remote_archive
+    
+    adb_shell su -c chown -R "$owner" "$datadir"
+    
+    echo >&2
+  done
+}
+
+
+## main
+##
+
+unset serial
 case "$1" in
+-s) serial="$2"; shift 2;;
 -*) echo "$pname: $1: unknown option.">&2; shift; exit 1;;
 esac
-
 test $# -eq 0 && { echo "$usage"; exit 0; }
-
 cmd="$1"
 shift
+
+nadev=$(number_of_adb_devices)
+if [ $nadev -eq 0 ]; then
+  echo "$pname: No remote adb devices.">&2
+  exit 16
+elif [ $nadev -ge 2 ]; then
+  echo "$pname: Two or more remote adb devices exist. Please use $ANDROID_SERIAL envvar, or -s option.">&2
+  exit 17
+fi
+
+if remote_cmd_not_exist id; then
+  echo "$pname: Unable to dump: No id command on the phone.">&2
+  exit 18
+fi
+if remote_adb_is_rooted; then
+  sucmd='sh -c'
+elif remote_su_not_exist; then
+  #if [ "$cmd" = data ]; then
+  #  echo "$pname: Unable to dump: No rooted adbd nor su command on the phone. Solution: TWRP recovery or root the device.">&2
+  #  exit 19
+  #else
+    sucmd='sh -c'
+  #fi
+else
+  sucmd='su -c'
+fi
+
 case "$cmd" in
 apk) put_apks "$@";;
-ab|data) put_data "$@";;
+ab) put_ab "$@";;
+data) put_data "$@";;
 *) echo "$pname: $cmd: unknown command.">&2; exit 2;;
 esac
 exit $?
