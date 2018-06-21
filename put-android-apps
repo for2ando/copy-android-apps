@@ -1,5 +1,6 @@
 #!/bin/bash
 pname=$(basename "$0")
+dname=$(dirname "$0")
 usage="$pname [OPTIONS] apk APKFILENAME [...]
 $pname [OPTIONS] ab ABFILENAME [...]
 $pname [OPTIONS] data ARCHIVEFILENAME [...]
@@ -41,7 +42,7 @@ _adb() {
 }
 
 ## definition of adb_shell()
-source ./adb_shell
+source "$dname/adb_shell"
 
 remote_cmd_not_exist() {
   rc=$(adb_echo_result "$@")
@@ -104,6 +105,7 @@ put_ab() {
     test -s "$ab" || { echo "$ab: file not exist or size=0.">&2; continue; }
     adb restore$opts "$(cygpath -w $ab)" >/dev/null &
     sleep 1
+    echo >&2
     adb-sendkey -v "$android_backup_password<tab><tab><enter>"
     wait
     echo >&2

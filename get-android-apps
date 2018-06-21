@@ -1,5 +1,6 @@
 #!/bin/bash
 pname=$(basename "$0")
+dname=$(dirname "$0")
 usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [FILTER]
 $pname [OPTIONS] apk PKGNAME [...]
 $pname [OPTIONS] ab PKGNAME [...]
@@ -58,7 +59,7 @@ _adb() {
 }
 
 ## definition of adb_shell()
-source ./adb_shell
+source "$dname/adb_shell"
 
 remote_cmd_not_exist() {
   rc=$(adb_echo_result "$@")
