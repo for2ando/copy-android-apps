@@ -23,9 +23,6 @@ SUBCOMAMANDS
 
 dotfile=~/.android-apps
 
-## workaround for debug adb-sendkey
-which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
-
 ## functions
 ##
 
@@ -40,9 +37,6 @@ number_of_adb_devices() {
 _adb() {
   adb ${serial:+-s $serial} "$@"
 }
-
-## definition of adb_shell()
-source "$dname/adb_shell"
 
 remote_cmd_not_exist() {
   rc=$(adb_echo_result "$@")

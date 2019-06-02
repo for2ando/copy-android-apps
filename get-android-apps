@@ -40,8 +40,6 @@ SUBCOMAMANDS
 
 dotfile=~/.android-apps
 
-## workaround for debug adb-sendkey
-which adb-sendkey >/dev/null 2>&1 || adb-sendkey() { ./adb-sendkey "$@"; }
 
 ## functions
 ##
@@ -57,9 +55,6 @@ number_of_adb_devices() {
 _adb() {
   adb ${serial:+-s $serial} "$@"
 }
-
-## definition of adb_shell()
-source "$dname/adb_shell"
 
 remote_cmd_not_exist() {
   rc=$(adb_echo_result "$@")
@@ -137,14 +132,21 @@ get_ab() {
     echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
     read
   }
+  local iter=0
   for pkg; do
     while true; do
       echo -n "$pkg: ">&2
       adb backup$opts -f "$pkg.ab" -noapk -noobb -noshared "$pkg" >/dev/null &
       sleep 1
       echo >&2
-      adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+      # workarounds for adb backup bugs on some devices
+      if [ $"dev" = CLT_L29 -a $iter -gt 0 ]; then
+        adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
+      else
+        adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+      fi
       wait
+      iter=$((iter+1))
       test -s "$pkg.ab" && break
       echo "$pname: $pkg.ab: has size=0. Retry (Y/N) ?">&2
       while read answer; do
@@ -247,6 +249,8 @@ elif remote_su_not_exist; then
 else
   sucmd='su -c'
 fi
+
+dev=$(adb-parsedev model) || exit 20
 
 case "$cmd" in
 list) list_package_names "$@";;

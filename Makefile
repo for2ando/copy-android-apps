@@ -1,4 +1,9 @@
 # Makefile for copy-android-apps
 
-install: get-android-apps put-android-apps adb-sendkey adb_echo_result adb_return_result adb_shell
-	tar -cf - $^ | (cd ~/bin; tar -xvf -)
+INSTDIR=~/bin
+
+install: get-android-apps put-android-apps
+	tar -cf - $^ | (cd $(INSTDIR); tar -xvf -)
+
+diff: get-android-apps put-android-apps
+	$(foreach i,$^,diff -u $(INSTDIR)/$i $i;)
