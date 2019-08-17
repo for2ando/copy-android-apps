@@ -108,9 +108,11 @@ get_apks() {
   
   for pkg; do
     echo -n "$pkg: ">&2
-    apkPath=$(adb_shell pm path "$pkg" | sed 's/^package://')
-    adb pull$opts "$apkPath" &&
-      mv $(basename "$apkPath") "$pkg.apk"
+    local apkPath apkPathes=$(adb_shell pm path "$pkg" | sed 's/^package://;s/\r$//')
+    for apkPath in $apkPathes; do
+      adb pull$opts "$apkPath" &&
+        mv $(basename "$apkPath") "$pkg-$(basename $apkPath .apk).apk"
+    done
     echo >&2
   done | grep '^[^[]'
 }
@@ -132,21 +134,23 @@ get_ab() {
     echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
     read
   }
-  local iter=0
+  # workaround for some glitch after
+  if [ "$dev" = CLT_L29 ]; then
+    set "$1" "$@"
+  fi
   for pkg; do
     while true; do
       echo -n "$pkg: ">&2
       adb backup$opts -f "$pkg.ab" -noapk -noobb -noshared "$pkg" >/dev/null &
       sleep 1
       echo >&2
-      # workarounds for adb backup bugs on some devices
-      if [ $"dev" = CLT_L29 -a $iter -gt 0 ]; then
+      # workarounds for some glitch in between adb backup and sendkey on some devices
+      if [ "$dev" = CLT_L29 ]; then
         adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
       else
         adb-sendkey -v "$android_backup_password<tab><tab><enter>"
       fi
       wait
-      iter=$((iter+1))
       test -s "$pkg.ab" && break
       echo "$pname: $pkg.ab: has size=0. Retry (Y/N) ?">&2
       while read answer; do

@@ -1,9 +1,10 @@
 # Makefile for copy-android-apps
 
 INSTDIR=~/bin
+INSTFILES=get-android-apps put-android-apps
 
-install: get-android-apps put-android-apps
-	tar -cf - $^ | (cd $(INSTDIR); tar -xvf -)
+install: $(INSTFILES)
+	install --target-directory=$(INSTDIR) $^
 
-diff: get-android-apps put-android-apps
+diff: $(INSTFILES)
 	$(foreach i,$^,diff -u $(INSTDIR)/$i $i;)
