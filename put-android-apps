@@ -22,6 +22,8 @@ SUBCOMAMANDS
 "
 
 dotfile=~/.android-apps
+glitchdevs=~/etc/devices.adb-backup-glitch
+
 
 ## functions
 ##
@@ -94,13 +96,24 @@ put_ab() {
     echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
     read
   }
+  # preparing workaround for some glitch after
+  glitch=false
+  grep -F -q --line-regexp $(adb-parsedev model) "$glitchdevs" && glitch=true
+  if $glitch; then
+    set "$1" "$@"
+  fi
   for ab; do
     echo -n "$ab: ">&2
     test -s "$ab" || { echo "$ab: file not exist or size=0.">&2; continue; }
     adb restore$opts "$(cygpath -w $ab)" >/dev/null &
     sleep 1
     echo >&2
-    adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+    # workaround for some glitch in between adb backup and sendkey on some devices
+    if $glitch; then
+      adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
+    else
+      adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+    fi
     wait
     echo >&2
   done

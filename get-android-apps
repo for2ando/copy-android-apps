@@ -39,6 +39,7 @@ SUBCOMAMANDS
 "
 
 dotfile=~/.android-apps
+glitchdevs=~/etc/devices.adb-backup-glitch
 
 
 ## functions
@@ -134,8 +135,10 @@ get_ab() {
     echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
     read
   }
-  # workaround for some glitch after
-  if [ "$dev" = CLT_L29 ]; then
+  # preparing workaround for some glitch after
+  glitch=false
+  grep -F -q --line-regexp "$dev" "$glitchdevs" && glitch=true
+  if $glitch; then
     set "$1" "$@"
   fi
   for pkg; do
@@ -145,7 +148,7 @@ get_ab() {
       sleep 1
       echo >&2
       # workarounds for some glitch in between adb backup and sendkey on some devices
-      if [ "$dev" = CLT_L29 ]; then
+      if $glitch; then
         adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
       else
         adb-sendkey -v "$android_backup_password<tab><tab><enter>"
