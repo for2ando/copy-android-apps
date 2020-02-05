@@ -1,6 +1,8 @@
 #!/bin/bash
 pname=$(basename "$0")
 dname=$(dirname "$0")
+dotfile=~/.android-apps
+glitchdevs=~/etc/devices.adb-backup-glitch
 usage="$pname [OPTIONS] apk APKFILENAME [...]
 $pname [OPTIONS] ab ABFILENAME [...]
 $pname [OPTIONS] data ARCHIVEFILENAME [...]
@@ -8,59 +10,36 @@ $pname [OPTIONS] data ARCHIVEFILENAME [...]
 OPTIONS
   -s SERIAL
     use device with given serial number (overrides \$ANDROID_SERIAL), same as adb command
+  -v|--verbose
+    Additional messages are displayed. It has precedence over -q|--quiet|-s|--silent.
+  -n|--dryrun
+    Only messages displayed, No SAADirectory is made.
 
 SUBCOMAMANDS
   $pname apk APKFILENAME [...]
     Install Android app's APK files to a remote Android device.
+    Multiple APK support: if one APK file of a multiple apk set appeared in commandline argument,
+    the all correspondent APK are installed used with 'adb install-multiple'. Even if any two
+    arguments point to same one APK set, then the installation is done onetime per the APK set.
   $pname ab ABFILENAME [...]
-    Install Android app's backuped data image files to a remote Android device.
-    Each of data image files is one get by the 'adb backup' command.
+    Install Android app's backuped data image files (that is made with 'adb backup') to a remote
+    Android device. There is a known glitch in a execution of 'adb backup' or 'adb restore' on
+    some Android device, in such case the device ignores first character of a backup/restore
+    password send from the adb host computer by `adb shell input` command except in case of first
+    attempt of backup/restore. When you want to apply this command on such device, you have to
+    write the device's name (you can obtain the name from an output of 'adb device -l' command
+    as 'model:Pixel_4_XL') in the file: $glitchdevs one at a line.
   $pname data ARCHIVEFILENAME [...]
-    Install Android app's data files into the /data/data/*/ directory on
-    a remote Android device.
-    Each of data files is one get by the 'get-android-apps data' command.
+    Install Android app's data files (that is made with the 'get-android-apps data' command) into
+    the /data/data/*/ directory on a remote Android device. This subcommand is EXPERIMENTAL.
 "
 
-dotfile=~/.android-apps
-glitchdevs=~/etc/devices.adb-backup-glitch
+source "$dname/globmatch.sh"
+source "$dname/run.sh"
+source "$dname/adbwrappers.sh"
+source "$dname/in_args.sh"
 
-
-## functions
-##
-
-list_adb_devices() {
-  adb devices | grep -v -e '^List of devices attached$' -e '^$'
-}
-
-number_of_adb_devices() {
-  list_adb_devices | if [ -n "$serial" ]; then grep "^$serial"; else cat -; fi | wc -l
-}
-
-_adb() {
-  adb ${serial:+-s $serial} "$@"
-}
-
-remote_cmd_not_exist() {
-  rc=$(adb_echo_result "$@")
-  test "$rc" = "127"
-}
-
-globmatch() {
-  case "$1" in
-  $2) true;;
-  *) false;;
-  esac
-}
-
-remote_adb_is_rooted() {
-  globmatch "$(adb_shell id)" 'uid=0\(*'
-}
-
-remote_su_not_exist() {
-  remote_cmd_not_exist su -c echo
-}
-
-## put apps' apk using adb install or pm install
+## put apps' apk using adb install or adb install-multiple
 put_apks() {
   test $# -eq 0 && { echo "$pname apk: .apk file(s) required.">&2; return; }
   
@@ -72,10 +51,24 @@ put_apks() {
     esac
   done
   
+  declare -a apkset_globs=()
   for apk; do
-    echo -n "$apk: ">&2
-    test -s "$apk" || { echo "$apk: file not exist or size=0.">&2; continue; }
-    adb install$opts "$(cygpath -w $apk)"
+    prefix=$(expr "$apk" : '\(.*-\)[^-/]*\.apk')
+    if [ "$prefix" != "" ]; then
+      if in_args "$prefix" "${apkset_globs[@]}"; then continue; fi
+      echo -n "$apk: ">&2
+      apkset_globs+=("$prefix")
+      IFS=$'\n' apks=($(ls "$prefix"*))
+      test ${#apks[@]} = 0 && { echo "${prefix}*: file not exist.">&2; continue; }
+      echo -n "--> "${apks[@]}": "
+      IFS=$'\n' apks_w=($(cygpath -w "${apks[@]}"))
+      run_adb install-multiple$opts "${apks_w[@]}"
+    else
+      echo -n "$apk: ">&2
+      test -s "$apk" || { echo "$apk: file not exist or size=0.">&2; continue; }
+      IFS=$'\n' apk_w=($(cygpath -w "$apk"))
+      run_adb install$opts "${apk_w[@]}"
+    fi
   done
 }
 
@@ -105,14 +98,14 @@ put_ab() {
   for ab; do
     echo -n "$ab: ">&2
     test -s "$ab" || { echo "$ab: file not exist or size=0.">&2; continue; }
-    adb restore$opts "$(cygpath -w $ab)" >/dev/null &
+    run_adb restore$opts "$(cygpath -w $ab)" >/dev/null &
     sleep 1
     echo >&2
     # workaround for some glitch in between adb backup and sendkey on some devices
     if $glitch; then
-      adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
+      run adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
     else
-      adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+      run adb-sendkey -v "$android_backup_password<tab><tab><enter>"
     fi
     wait
     echo >&2
@@ -143,15 +136,15 @@ put_data() {
     owner=$(adb_shell su -c ls -ld "$datadir" | awk '{print $2 ":" $3;}')
     
     remote_archive="$remote_tmp/$(basename $archive)"
-    rm_remote_archive="adb shell rm -f $remote_archive"
+    rm_remote_archive="run adb_shell rm -f $remote_archive"
     trap "$rm_remote_archive" 2
-    adb push "$archive" "$remote_tmp"
+    run_adb push "$archive" "$remote_tmp"
     $removep && adb_shell su -c rm -rf "$datadir/*" "$datadir/.[!.]*"
-    adb_shell su -c tar -zxvkf "$remote_archive" -C "$datadir"
+    run adb_shell su -c tar -zxvkf "$remote_archive" -C "$datadir"
     trap - 2
     $rm_remote_archive
     
-    adb_shell su -c chown -R "$owner" "$datadir"
+    run adb_shell su -c chown -R "$owner" "$datadir"
     
     echo >&2
   done
@@ -162,14 +155,22 @@ put_data() {
 ##
 
 unset serial
-case "$1" in
--s) serial="$2"; shift 2;;
--*) echo "$pname: $1: unknown option.">&2; shift; exit 1;;
-esac
+verbosep=false
+dryrunp=false
+while true; do
+  case "$1" in
+  -s) serial="$2"; shift 2;;
+  -v|--verbose) verbosep=true; shift;;
+  -n|--dryrun) dryrunp=true; verbosep=true; shift;;
+  -*) echo "$pname: $1: unknown option.">&2; shift; exit 1;;
+  *) break;;
+  esac
+done
 test $# -eq 0 && { echo "$usage"; exit 0; }
 cmd="$1"
 shift
 
+#declare -f run _adb number_of_adb_devices list_adb_devices
 nadev=$(number_of_adb_devices)
 if [ $nadev -eq 0 ]; then
   echo "$pname: No remote adb devices.">&2
@@ -200,6 +201,6 @@ case "$cmd" in
 apk) put_apks "$@";;
 ab) put_ab "$@";;
 data) put_data "$@";;
-*) echo "$pname: $cmd: unknown command.">&2; exit 2;;
+*) echo "$pname: $cmd: unknown subcommand.">&2; exit 2;;
 esac
 exit $?

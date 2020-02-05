@@ -1,6 +1,8 @@
 #!/bin/bash
 pname=$(basename "$0")
 dname=$(dirname "$0")
+dotfile=~/.android-apps
+glitchdevs=~/etc/devices.adb-backup-glitch
 usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [FILTER]
 $pname [OPTIONS] apk PKGNAME [...]
 $pname [OPTIONS] ab PKGNAME [...]
@@ -9,6 +11,10 @@ $pname [OPTIONS] data PKGNAME [...]
 OPTIONS
   -s SERIAL
     use device with given serial number (overrides \$ANDROID_SERIAL), same as adb command
+  -v|--verbose
+    Additional messages are displayed. It has precedence over -q|--quiet|-s|--silent.
+  -n|--dryrun
+    Only messages displayed, No SAADirectory is made.
 
 SUBCOMAMANDS
   $pname list [-{d|e|s|3}] [-u] [FILTER]
@@ -38,44 +44,9 @@ SUBCOMAMANDS
     a simply snapshot of current /data/data/PKGNAME directory.
 "
 
-dotfile=~/.android-apps
-glitchdevs=~/etc/devices.adb-backup-glitch
-
-
-## functions
-##
-
-list_adb_devices() {
-  adb devices | grep -v -e '^List of devices attached$' -e '^$'
-}
-
-number_of_adb_devices() {
-  list_adb_devices | if [ -n "$serial" ]; then grep "^$serial"; else cat -; fi | wc -l
-}
-
-_adb() {
-  adb ${serial:+-s $serial} "$@"
-}
-
-remote_cmd_not_exist() {
-  rc=$(adb_echo_result "$@")
-  test "$rc" = "127"
-}
-
-globmatch() {
-  case "$1" in
-  $2) true;;
-  *) false;;
-  esac
-}
-
-remote_adb_is_rooted() {
-  globmatch "$(adb_shell id)" 'uid=0\(*'
-}
-
-remote_su_not_exist() {
-  remote_cmd_not_exist su -c echo
-}
+source "$dname/globmatch.sh"
+source "$dname/run.sh"
+source "$dname/adbwrappers.sh"
 
 ## list apps using pm or cmd package
 list_package_names() {
@@ -111,7 +82,7 @@ get_apks() {
     echo -n "$pkg: ">&2
     local apkPath apkPathes=$(adb_shell pm path "$pkg" | sed 's/^package://;s/\r$//')
     for apkPath in $apkPathes; do
-      adb pull$opts "$apkPath" &&
+      run_adb pull$opts "$apkPath" &&
         mv $(basename "$apkPath") "$pkg-$(basename $apkPath .apk).apk"
     done
     echo >&2
@@ -144,14 +115,14 @@ get_ab() {
   for pkg; do
     while true; do
       echo -n "$pkg: ">&2
-      adb backup$opts -f "$pkg.ab" -noapk -noobb -noshared "$pkg" >/dev/null &
+      run_adb backup$opts -f "$pkg.ab" -noapk -noobb -noshared "$pkg" >/dev/null &
       sleep 1
       echo >&2
       # workarounds for some glitch in between adb backup and sendkey on some devices
       if $glitch; then
-        adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
+        run adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
       else
-        adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+        run adb-sendkey -v "$android_backup_password<tab><tab><enter>"
       fi
       wait
       test -s "$pkg.ab" && break
@@ -175,7 +146,7 @@ get_datadir() {
   }
   pkg="$1"
   pmdump="$2"
-  adb_shell pm dump "$pkg" >"$pmdump"
+  run adb_shell pm dump "$pkg" >"$pmdump"
   fgrep -q "Unable to find package: $pkg" "$pmdump" && {
     echo "$pname: $pkg: package doesn't exist.">&2
     return 1
@@ -210,7 +181,7 @@ get_data() {
       echo "remote directory \"$datadir\" is not exist nor readbale.">&2
       continue
     }
-    adb_shell $sucmd tar -cf - -C "$datadir" . | gzip -c >"$dstfile"
+    run adb_shell $sucmd tar -cf - -C "$datadir" . | gzip -c >"$dstfile"
     echo >&2
   done
   
@@ -223,10 +194,17 @@ get_data() {
 ##
 
 unset serial
-case "$1" in
--s) serial="$2"; shift 2;;
--*) echo "$pname: $1: unknown option.">&2; shift; exit 2;;
-esac
+verbosep=false
+dryrunp=false
+while true; do
+  case "$1" in
+  -s) serial="$2"; shift 2;;
+  -v|--verbose) verbosep=true; shift;;
+  -n|--dryrun) dryrunp=true; verbosep=true; shift;;
+  -*) echo "$pname: $1: unknown option.">&2; shift; exit 2;;
+  *) break;;
+  esac
+done
 test $# -eq 0 && { echo "$usage"; exit 0; }
 cmd="$1"
 shift
@@ -264,6 +242,6 @@ list) list_package_names "$@";;
 apk) get_apks "$@";;
 ab) get_ab "$@";;
 data) get_data "$@";;
-*) echo "$pname: $cmd: unknown command.">&2; exit 1;;
+*) echo "$pname: $cmd: unknown subcommand.">&2; exit 1;;
 esac
 exit $?
