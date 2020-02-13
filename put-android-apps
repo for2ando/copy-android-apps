@@ -25,7 +25,7 @@ SUBCOMAMANDS
     Install Android app's backuped data image files (that is made with 'adb backup') to a remote
     Android device. There is a known glitch in a execution of 'adb backup' or 'adb restore' on
     some Android device, in such case the device ignores first character of a backup/restore
-    password send from the adb host computer by `adb shell input` command except in case of first
+    password send from the adb host computer by 'adb shell input' command except in case of first
     attempt of backup/restore. When you want to apply this command on such device, you have to
     write the device's name (you can obtain the name from an output of 'adb device -l' command
     as 'model:Pixel_4_XL') in the file: $glitchdevs one at a line.

@@ -15,3 +15,15 @@ install-etc: $(ETCFILES)
 
 diff: $(BINFILES)
 	$(foreach i,$^,diff -u $(BINDIR)/$i $i;)
+
+
+IMPORTDIR1=../adbtools
+IMPORTFILES1=adb_shell adb-sendkey adb-parsedev
+
+prepare: $(IMPORTFILES1)
+
+$(IMPORTFILES1): $(IMPORTDIR1)
+	ln -sf $(addprefix $^/,$@) .
+
+$(IMPORTDIR1):
+	cd $(dir $@) && git clone git@github.com:for2ando/copy-android-apps.git $(notdir $@)
