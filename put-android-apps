@@ -38,6 +38,13 @@ source "$dname/globmatch.sh"
 source "$dname/run.sh"
 source "$dname/adbwrappers.sh"
 source "$dname/in_args.sh"
+get-device-type() {
+  devname="$1"
+  devlist="$2"
+  devtype=$(sed -n "/^\([0-9][0-9]*\) $devname$/{ s//\1/;p;q;}" "$devlist")
+  test -z "$devtype" && devtype=0
+  echo $devtype
+}
 
 ## put apps' apk using adb install or adb install-multiple
 put_apks() {
@@ -90,11 +97,8 @@ put_ab() {
     read
   }
   # preparing workaround for some glitch after
-  glitch=false
-  grep -F -q --line-regexp $(adb-parsedev model) "$glitchdevs" && glitch=true
-  if $glitch; then
-    set "$1" "$@"
-  fi
+  glitchtype=$(get-device-type "$(adb-parsedev model)" "$glitchdevs")
+  test $glitchtype -eq 1 && set "$1" "$@"
   for ab; do
     echo -n "$ab: ">&2
     test -s "$ab" || { echo "$ab: file not exist or size=0.">&2; continue; }
@@ -102,11 +106,11 @@ put_ab() {
     sleep 1
     echo >&2
     # workaround for some glitch in between adb backup and sendkey on some devices
-    if $glitch; then
-      run adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
-    else
-      run adb-sendkey -v "$android_backup_password<tab><tab><enter>"
-    fi
+    case $glitchtype in
+    1) run adb-sendkey -v "0$android_backup_password<tab><tab><enter>";;
+    2) run adb-sendkey -v "<tab><tab><tab><tab>$android_backup_password<tab><tab><enter>";;
+    *) run adb-sendkey -v "$android_backup_password<tab><tab><enter>";;
+    esac
     wait
     echo >&2
   done
