@@ -4,6 +4,8 @@ BINDIR=$(HOME)/bin
 BINFILES=get-android-apps put-android-apps globmatch.sh in_args.sh run.sh adbwrappers.sh
 ETCDIR=$(HOME)/etc
 ETCFILES=devices.adb-backup-glitch
+IMPORTDIR1=../adbtools
+IMPORTFILES1=adb_shell adb-sendkey adb-parsedev
 
 install: install-bin install-etc
 
@@ -16,11 +18,10 @@ install-etc: $(ETCFILES)
 diff: $(BINFILES)
 	$(foreach i,$^,diff -u $(BINDIR)/$i $i;)
 
-
-IMPORTDIR1=../adbtools
-IMPORTFILES1=adb_shell adb-sendkey adb-parsedev
-
 prepare: $(IMPORTFILES1)
+
+clean:
+	rm -f $(IMPORTFILES1)
 
 $(IMPORTFILES1): $(IMPORTDIR1)
 	ln -sf $(addprefix $^/,$@) .
