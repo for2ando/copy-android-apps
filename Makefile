@@ -3,7 +3,7 @@
 BINDIR=$(HOME)/bin
 BINFILES=get-android-apps put-android-apps globmatch.sh in_args.sh run.sh adbwrappers.sh
 ETCDIR=$(HOME)/etc
-ETCFILES=devices.adb-backup-glitch
+ETCFILES=adb-backup-glitch.list
 IMPORTDIR1=../adbtools
 IMPORTFILES1=adb_shell adb-sendkey adb-parsedev
 

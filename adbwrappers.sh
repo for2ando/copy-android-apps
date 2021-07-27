@@ -7,7 +7,11 @@ number_of_adb_devices() {
 }
 
 _adb() {
-  adb ${serial:+-s $serial} "$@"
+  adb ${serial:+-s $serial} "$@" | sed 's/\r$//'
+}
+
+run__adb() {
+  run _adb "$@"
 }
 
 run_adb() {

@@ -1,50 +1,56 @@
 #!/bin/bash
 pname=$(basename "$0")
 dname=$(dirname "$0")
-dotfile=~/.android-apps
-glitchdevs=~/etc/devices.adb-backup-glitch
+dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
+glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null || echo ~/etc/adb-backup-glitch.list)
 usage="$pname [OPTIONS] apk APKFILENAME [...]
 $pname [OPTIONS] ab ABFILENAME [...]
 $pname [OPTIONS] data ARCHIVEFILENAME [...]
 
 OPTIONS
   -s SERIAL
-    use device with given serial number (overrides \$ANDROID_SERIAL), same as adb command
+    use device with given serial number (overrides \$ANDROID_SERIAL), same as
+    adb command
   -v|--verbose
-    Additional messages are displayed. It has precedence over -q|--quiet|-s|--silent.
+    Additional messages are displayed. It has precedence over
+    -q|--quiet|-s|--silent.
   -n|--dryrun
     Only messages displayed, No SAADirectory is made.
 
 SUBCOMAMANDS
   $pname apk APKFILENAME [...]
     Install Android app's APK files to a remote Android device.
-    Multiple APK support: if one APK file of a multiple apk set appeared in commandline argument,
-    the all correspondent APK are installed used with 'adb install-multiple'. Even if any two
-    arguments point to same one APK set, then the installation is done onetime per the APK set.
+    Multiple APK support: if one APK file of a multiple apk set appeared in
+    commandline argument, the all correspondent APK are installed used with
+    'adb install-multiple'.
+    Even if any two arguments point to same one APK set, then the installation
+    is done onetime per the APK set.
   $pname ab ABFILENAME [...]
-    Install Android app's backuped data image files (that is made with 'adb backup') to a remote
-    Android device. There is a known glitch in a execution of 'adb backup' or 'adb restore' on
-    some Android device, in such case the device ignores first character of a backup/restore
-    password send from the adb host computer by 'adb shell input' command except in case of first
-    attempt of backup/restore. When you want to apply this command on such device, you have to
-    write the device's name (you can obtain the name from an output of 'adb device -l' command
-    as 'model:Pixel_4_XL') in the file: $glitchdevs one at a line.
+    Install Android app's backuped data image files (that is made with 'adb
+    backup') to a remote Android device. There are some known glitches in
+    execution of 'adb backup' or 'adb restore' on some Android device,
+    In one of such glitches (called 'Type 1 glitch'), the device ignores first
+    character of a backup/restore password send from the adb host computer by
+    'adb shell input' command except in case of first attempt of
+    backup/restore.
+    In another one of such glitches (called 'type 2 glitch'), the device
+    requires inputting extra tab characters before the input of a
+    backup/restore password.
+    When you want to apply this command on such devices, you have to write the
+    glitch-type-number and the device's name (you can obtain a device name from
+    an output of 'adb device -l' command as 'model:Pixel_4_XL') in the file:
+    $glitchdevs one at a line.
   $pname data ARCHIVEFILENAME [...]
-    Install Android app's data files (that is made with the 'get-android-apps data' command) into
-    the /data/data/*/ directory on a remote Android device. This subcommand is EXPERIMENTAL.
+    Install Android app's data files (that is made with the 'get-android-apps
+    data' command) into the /data/data/*/ directory on a remote Android device.
+    This subcommand is EXPERIMENTAL.
 "
 
 source "$dname/globmatch.sh"
 source "$dname/run.sh"
 source "$dname/adbwrappers.sh"
 source "$dname/in_args.sh"
-get-device-type() {
-  devname="$1"
-  devlist="$2"
-  devtype=$(sed -n "/^\([0-9][0-9]*\) $devname$/{ s//\1/;p;q;}" "$devlist")
-  test -z "$devtype" && devtype=0
-  echo $devtype
-}
+source "$dname/glitch.sh"
 
 ## put apps' apk using adb install or adb install-multiple
 put_apks() {
@@ -97,8 +103,10 @@ put_ab() {
     read
   }
   # preparing workaround for some glitch after
-  glitchtype=$(get-device-type "$(adb-parsedev model)" "$glitchdevs")
-  test $glitchtype -eq 1 && set "$1" "$@"
+  glitchtype=$(get-glitch-type "$devname" "$glitchlist")
+  echo $glitchtype,$devname,>&2
+  test "$glitchtype" -eq 1 &&
+    set "$1" "$@"
   for ab; do
     echo -n "$ab: ">&2
     test -s "$ab" || { echo "$ab: file not exist or size=0.">&2; continue; }
@@ -106,7 +114,7 @@ put_ab() {
     sleep 1
     echo >&2
     # workaround for some glitch in between adb backup and sendkey on some devices
-    case $glitchtype in
+    case "$glitchtype" in
     1) run adb-sendkey -v "0$android_backup_password<tab><tab><enter>";;
     2) run adb-sendkey -v "<tab><tab><tab><tab>$android_backup_password<tab><tab><enter>";;
     *) run adb-sendkey -v "$android_backup_password<tab><tab><enter>";;
@@ -200,6 +208,8 @@ elif remote_su_not_exist; then
 else
   sucmd='su -c'
 fi
+
+devname=$(adb-parsedev model) || exit 20
 
 case "$cmd" in
 apk) put_apks "$@";;

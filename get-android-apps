@@ -1,8 +1,8 @@
 #!/bin/bash
 pname=$(basename "$0")
 dname=$(dirname "$0")
-dotfile=~/.android-apps
-glitchdevs=~/etc/devices.adb-backup-glitch
+dotfile=$(ls ./dot-android-apps 2>dev/null || echo ~/.android-apps)
+glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null || echo ~/etc/adb-backup-glitch.list)
 usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [FILTER]
 $pname [OPTIONS] apk PKGNAME [...]
 $pname [OPTIONS] ab PKGNAME [...]
@@ -47,6 +47,7 @@ SUBCOMAMANDS
 source "$dname/globmatch.sh"
 source "$dname/run.sh"
 source "$dname/adbwrappers.sh"
+source "$dname/glitch.sh"
 
 ## list apps using pm or cmd package
 list_package_names() {
@@ -107,11 +108,10 @@ get_ab() {
     read
   }
   # preparing workaround for some glitch after
-  glitch=false
-  grep -F -q --line-regexp "$dev" "$glitchdevs" && glitch=true
-  if $glitch; then
+  glitchtype=$(get-glitch-type "$devname" "$glitchlist")
+  test "$glitchtype" -eq 1 &&
     set "$1" "$@"
-  fi
+  retryp=false
   for pkg; do
     while true; do
       echo -n "$pkg: ">&2
@@ -119,11 +119,17 @@ get_ab() {
       sleep 1
       echo >&2
       # workarounds for some glitch in between adb backup and sendkey on some devices
-      if $glitch; then
-        run adb-sendkey -v "0$android_backup_password<tab><tab><enter>"
-      else
+      if $retryp; then
         run adb-sendkey -v "$android_backup_password<tab><tab><enter>"
+      else
+        case "$glitchtype" in
+        1) run adb-sendkey -v "0$android_backup_password<tab><tab><enter>";;
+        2) run adb-sendkey -v "<tab><tab><tab><tab>$android_backup_password<tab><tab><enter>";;
+        *) run adb-sendkey -v "$android_backup_password<tab><tab><enter>";;
+        esac
       fi
+
+      retryp=false
       wait
       test -s "$pkg.ab" && break
       echo "$pname: $pkg.ab: has size=0. Retry (Y/N) ?">&2
@@ -134,6 +140,7 @@ get_ab() {
         *) ;;
         esac
       done
+      retryp=true
     done
     echo >&2
   done
@@ -235,7 +242,7 @@ else
   sucmd='su -c'
 fi
 
-dev=$(adb-parsedev model) || exit 20
+devname=$(adb-parsedev model) || exit 20
 
 case "$cmd" in
 list) list_package_names "$@";;
