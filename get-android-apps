@@ -1,7 +1,7 @@
 #!/bin/bash
 pname=$(basename "$0")
 dname=$(dirname "$0")
-dotfile=$(ls ./dot-android-apps 2>dev/null || echo ~/.android-apps)
+dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
 glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null || echo ~/etc/adb-backup-glitch.list)
 usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [FILTER]
 $pname [OPTIONS] apk PKGNAME [...]

@@ -1,7 +1,7 @@
 # Makefile for copy-android-apps
 
 BINDIR=$(HOME)/bin
-BINFILES=get-android-apps put-android-apps globmatch.sh in_args.sh run.sh adbwrappers.sh
+BINFILES=get-android-apps put-android-apps globmatch.sh in_args.sh run.sh adbwrappers.sh glitch.sh
 ETCDIR=$(HOME)/etc
 ETCFILES=adb-backup-glitch.list
 IMPORTDIR1=../adbtools
