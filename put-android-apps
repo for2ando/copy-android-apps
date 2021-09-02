@@ -2,7 +2,8 @@
 pname=$(basename "$0")
 dname=$(dirname "$0")
 dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
-glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null || echo ~/etc/adb-backup-glitch.list)
+glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null ||
+  echo ~/etc/adb-backup-glitch.list)
 usage="$pname [OPTIONS] apk APKFILENAME [...]
 $pname [OPTIONS] ab ABFILENAME [...]
 $pname [OPTIONS] data ARCHIVEFILENAME [...]
@@ -23,26 +24,27 @@ SUBCOMAMANDS
     Multiple APK support: if one APK file of a multiple apk set appeared in
     commandline argument, the all correspondent APK are installed used with
     'adb install-multiple'.
-    Even if any two arguments point to same one APK set, then the installation
-    is done onetime per the APK set.
+    Even if any two arguments point to same one APK set, then the
+    installation is done onetime per the APK set.
   $pname ab ABFILENAME [...]
     Install Android app's backuped data image files (that is made with 'adb
     backup') to a remote Android device. There are some known glitches in
     execution of 'adb backup' or 'adb restore' on some Android device,
-    In one of such glitches (called 'Type 1 glitch'), the device ignores first
-    character of a backup/restore password send from the adb host computer by
-    'adb shell input' command except in case of first attempt of
+    In one of such glitches (called 'Type 1 glitch'), the device ignores
+    first character of a backup/restore password send from the adb host
+    computer by 'adb shell input' command except in case of first attempt of
     backup/restore.
     In another one of such glitches (called 'type 2 glitch'), the device
     requires inputting extra tab characters before the input of a
     backup/restore password.
-    When you want to apply this command on such devices, you have to write the
-    glitch-type-number and the device's name (you can obtain a device name from
-    an output of 'adb device -l' command as 'model:Pixel_4_XL') in the file:
-    $glitchdevs one at a line.
+    When you want to apply this command on such devices, you have to write
+    the glitch-type-number and the device's name (you can obtain a device
+    name from an output of 'adb device -l' command as 'model:Pixel_4_XL') in
+    the file: $glitchdevs one at a line.
   $pname data ARCHIVEFILENAME [...]
     Install Android app's data files (that is made with the 'get-android-apps
-    data' command) into the /data/data/*/ directory on a remote Android device.
+    data' command) into the /data/data/*/ directory on a remote Android
+    device.
     This subcommand is EXPERIMENTAL.
 "
 
@@ -72,13 +74,15 @@ put_apks() {
       echo -n "$apk: ">&2
       apkset_globs+=("$prefix")
       IFS=$'\n' apks=($(ls "$prefix"*))
-      test ${#apks[@]} = 0 && { echo "${prefix}*: file not exist.">&2; continue; }
+      test ${#apks[@]} = 0 &&
+        { echo "${prefix}*: file not exist.">&2; continue; }
       echo -n "--> "${apks[@]}": "
       IFS=$'\n' apks_w=($(cygpath -w "${apks[@]}"))
       run_adb install-multiple$opts "${apks_w[@]}"
     else
       echo -n "$apk: ">&2
-      test -s "$apk" || { echo "$apk: file not exist or size=0.">&2; continue; }
+      test -s "$apk" ||
+        { echo "$apk: file not exist or size=0.">&2; continue; }
       IFS=$'\n' apk_w=($(cygpath -w "$apk"))
       run_adb install$opts "${apk_w[@]}"
     fi
@@ -113,7 +117,8 @@ put_ab() {
     run_adb restore$opts "$(cygpath -w $ab)" >/dev/null &
     sleep 1
     echo >&2
-    # workaround for some glitch in between adb backup and sendkey on some devices
+    # workaround for some glitch in between adb backup and sendkey on some
+    # devices
     case "$glitchtype" in
     1) run adb-sendkey -v "0$android_backup_password<tab><tab><enter>";;
     2) run adb-sendkey -v "<tab><tab><tab><tab>$android_backup_password<tab><tab><enter>";;
@@ -126,7 +131,8 @@ put_ab() {
 
 ## put apps' data files into /data/data/PKGNAME/
 put_data() {
-  test $# -eq 0 && { echo "$pname data: archive file(s) required.">&2; return;}
+  test $# -eq 0 &&
+    { echo "$pname data: archive file(s) required.">&2; return;}
   source "$dotfile"
 
   unset opts
@@ -143,7 +149,8 @@ put_data() {
   for archive; do
     echo -n "$archive: ">&2
     pkg=$(basename ${archive%.tar.gz})
-    test -s "$archive" || { echo "$archive: file not exist or size=0.">&2; continue; }
+    test -s "$archive" ||
+      { echo "$archive: file not exist or size=0.">&2; continue; }
     datadir=$(adb_shell pm dump "$pkg"|sed -n '/^ *dataDir=/{s///;p;q;}')
     owner=$(adb_shell su -c ls -ld "$datadir" | awk '{print $2 ":" $3;}')
     

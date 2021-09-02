@@ -2,7 +2,8 @@
 pname=$(basename "$0")
 dname=$(dirname "$0")
 dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
-glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null || echo ~/etc/adb-backup-glitch.list)
+glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null ||
+  echo ~/etc/adb-backup-glitch.list)
 usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
 $pname [OPTIONS] apk PKGNAME [...]
 $pname [OPTIONS] ab PKGNAME [...]
@@ -12,9 +13,11 @@ $pname [OPTIONS] singleapk APKNAME [...]
 
 OPTIONS
   -s SERIAL
-    use device with given serial number (overrides \$ANDROID_SERIAL), same as adb command
+    use device with given serial number (overrides \$ANDROID_SERIAL), same
+    as adb command.
   -v|--verbose
-    Additional messages are displayed. It has precedence over -q|--quiet|-s|--silent.
+    Additional messages are displayed. It has precedence over
+    -q|--quiet|-s|--silent.
   -n|--dryrun
     Only messages displayed, No SAADirectory is made.
 
@@ -41,9 +44,9 @@ SUBCOMAMANDS
     Copy Android app's APK files has designated APKNAME to the current
     directory. The APKNAME must have the format as PKGNAME-*.apk.
   $pname ab PKGNAME [...]
-    Get Android app's backup data images for PKGNAMEs to the current directory.
-    Each of data files has the name as PKGNAME.ab, which is get by the
-    'adb backup' command.
+    Get Android app's backup data images for PKGNAMEs to the current
+    directory. Each of data files has the name as PKGNAME.ab, which is get
+    by the 'adb backup' command.
   $pname data PKGNAME [...]
     (requires superuser permission)
     Get Android app's /data/data files' archives for PKGNAMEs to the current
@@ -79,7 +82,8 @@ list_package_names() {
 
 ## list APK file names for desinated PKGNAMEs
 get_apk_names() {
-  test $# -eq 0 && { echo "$pname get_apk_names: Package name(s) required.">&2; return;}
+  test $# -eq 0 &&
+    { echo "$pname get_apk_names: Package name(s) required.">&2; return;}
   
   unset opts
   while true; do
@@ -95,7 +99,8 @@ get_apk_names() {
     local apkDirs=$(adb_shell pm path "$pkg" | sed 's/^package://;s/\r$//')
     for apkDir in $apkDirs; do
       for apkPath in $(run adb_shell ls "$apkDir"); do
-        pkgName=$(basename $(dirname "$apkPath") | sed 's/^\([^-]*\)-.*$/\1/')
+        pkgName=$(basename $(dirname "$apkPath") |
+          sed 's/^\([^-]*\)-.*$/\1/')
         echo "$pkgName-$(basename $apkPath)"
       done
     done
@@ -111,7 +116,8 @@ list_apk_names() {
 
 ## get each apps' apk using adb pull
 get_apks() {
-  test $# -eq 0 && { echo "$pname apk: Package name(s) required.">&2; return;}
+  test $# -eq 0 &&
+    { echo "$pname apk: Package name(s) required.">&2; return;}
   
   unset opts
   while true; do
@@ -123,7 +129,8 @@ get_apks() {
   
   for pkg; do
     echo -n "$pkg: ">&2
-    local apkPath apkPathes=$(adb_shell pm path "$pkg" | sed 's/^package://;s/\r$//')
+    local apkPath
+    local apkPathes=$(adb_shell pm path "$pkg" | sed 's/^package://;s/\r$//')
     for apkPath in $apkPathes; do
       run_adb pull$opts "$apkPath" &&
         mv $(basename "$apkPath") "$pkg-$(basename $apkPath)"
@@ -134,7 +141,8 @@ get_apks() {
 
 ## get each apps' apk using adb pull
 get_single_apk() {
-  test $# -eq 0 && { echo "$pname get_single_apk: APK name(s) required.">&2; return;}
+  test $# -eq 0 &&
+    { echo "$pname get_single_apk: APK name(s) required.">&2; return;}
   
   unset opts
   while true; do
@@ -148,18 +156,21 @@ get_single_apk() {
     local pkgName=$(echo $apk | sed 's/^\([^-]*\)-.*$/\1/')
     local apkName=$(echo $apk | sed 's/^[^-]*-\(.*\)$/\1/')
     echo "$pkgName: $apkName">&2
-    local apkPath apkPathes=$(adb_shell pm path "$pkgName" | sed 's/^package://;s/\r$//')
+    local apkPath
+    local apkPathes=$(adb_shell pm path "$pkgName" |
+      sed 's/^package://;s/\r$//')
     for apkPath in $apkPathes; do
       test $(basename "$apkPath") = "$apkName" &&
         run_adb pull$opts "$apkPath" &&
-         mv "$apkName" "$pkgName-$apkName"
+          mv "$apkName" "$pkgName-$apkName"
     done
   done
 }
 
 ## get each apps' data using adb backup
 get_ab() {
-  test $# -eq 0 && { echo "$pname data: Package name(s) required.">&2;return;}
+  test $# -eq 0 &&
+    { echo "$pname data: Package name(s) required.">&2;return;}
   source "$dotfile"
   
   unset opts
@@ -182,10 +193,12 @@ get_ab() {
   for pkg; do
     while true; do
       echo -n "$pkg: ">&2
-      run_adb backup$opts -f "$pkg.ab" -noapk -noobb -noshared "$pkg" >/dev/null &
+      run_adb backup$opts -f "$pkg.ab" -noapk -noobb -noshared "$pkg" \
+        >/dev/null &
       sleep 1
       echo >&2
-      # workarounds for some glitch in between adb backup and sendkey on some devices
+      # workarounds for some glitch in between adb backup and sendkey on some
+      # devices
       if $retryp; then
         run adb-sendkey -v "$android_backup_password<tab><tab><enter>"
       else
@@ -232,7 +245,8 @@ get_datadir() {
 
 ## get each apps' /data/data directory snapshot using tar
 get_data() {
-  test $# -eq 0 && { echo "$pname data: Package name(s) required.">&2;return;}
+  test $# -eq 0 &&
+    { echo "$pname data: Package name(s) required.">&2;return;}
   source "$dotfile"
   
   unset opts
@@ -250,7 +264,6 @@ get_data() {
     echo -n "$pkg: ">&2
     dstfile=$pkg.tar.gz
     datadir=$(get_datadir "$pkg" "$pmdump") || continue
-    #echo -n "datadir=[$datadir]; ">&2
     test -n "$datadir" && adb_return_result $sucmd test -d "$datadir" || {
       echo "remote directory \"$datadir\" is not exist nor readbale.">&2
       continue
