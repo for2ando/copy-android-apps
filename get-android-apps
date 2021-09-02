@@ -3,11 +3,11 @@ pname=$(basename "$0")
 dname=$(dirname "$0")
 dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
 glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null || echo ~/etc/adb-backup-glitch.list)
-usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [PKG_FILTER]
+usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
 $pname [OPTIONS] apk PKGNAME [...]
 $pname [OPTIONS] ab PKGNAME [...]
 $pname [OPTIONS] data PKGNAME [...]
-$pname [OPTIONS] listapk [-{d|e|s|3}] [-u] [PKG_FILTER]
+$pname [OPTIONS] listapk [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
 $pname [OPTIONS] singleapk APKNAME [...]
 
 OPTIONS
@@ -19,8 +19,8 @@ OPTIONS
     Only messages displayed, No SAADirectory is made.
 
 SUBCOMAMANDS
-  $pname list [-{d|e|s|3}] [-u] [PKG_FILTER]
-  $pname listapk [-{d|e|s|3}] [-u] [PKG_FILTER]
+  $pname list [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
+  $pname listapk [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
     List Android app's package names or APK file names for the packages which
     name contains a string:PKG_FILTER to stdout.
     Suboptions:
@@ -71,7 +71,10 @@ list_package_names() {
     esac
   done
   
-  adb_shell pm list packages$opts "$@" | sed 's/^package://' | sort
+  test "$@" || set ''
+  for filter; do
+    adb_shell pm list packages$opts "$filter"
+  done | sed 's/^package://' | sort | uniq
 }
 
 ## list APK file names for desinated PKGNAMEs
