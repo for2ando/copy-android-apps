@@ -4,9 +4,11 @@ dname=$(dirname "$0")
 dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
 glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null ||
   echo ~/etc/adb-backup-glitch.list)
+xpager=$(which pageless 2>/dev/null || ${PAGER:-less})
 usage="$pname [OPTIONS] apk APKFILENAME [...]
 $pname [OPTIONS] ab ABFILENAME [...]
 $pname [OPTIONS] data ARCHIVEFILENAME [...]
+$pname {-h|--help}
 
 OPTIONS
   -s SERIAL
@@ -17,6 +19,8 @@ OPTIONS
     -q|--quiet|-s|--silent.
   -n|--dryrun
     Only messages displayed, No SAADirectory is made.
+  -h|--help
+    This help message is displayed.
 
 SUBCOMAMANDS
   $pname apk APKFILENAME [...]
@@ -56,7 +60,7 @@ source "$dname/glitch.sh"
 
 ## put apps' apk using adb install or adb install-multiple
 put_apks() {
-  test $# -eq 0 && { echo "$pname apk: .apk file(s) required.">&2; return; }
+  test $# -eq 0 && { echo "$pname apk: .apk file(s) required.">&2; return 1; }
   
   unset opts
   while true; do
@@ -68,7 +72,7 @@ put_apks() {
   
   declare -a apkset_globs=()
   for apk; do
-    prefix=$(expr "$apk" : '\(.*-\)[^-/]*\.apk')
+    local prefix=$(expr "$apk" : '\(.*-\)[^-/]*\.apk')
     if [ "$prefix" != "" ]; then
       if in_args "$prefix" "${apkset_globs[@]}"; then continue; fi
       echo -n "$apk: ">&2
@@ -87,11 +91,12 @@ put_apks() {
       run_adb install$opts "${apk_w[@]}"
     fi
   done
+  return 0
 }
 
 ## put apps' data images using adb restore
 put_ab() {
-  test $# -eq 0 && { echo "$pname ab: .ab file(s) required.">&2; return; }
+  test $# -eq 0 && { echo "$pname ab: .ab file(s) required.">&2; return 1; }
   source "$dotfile"
 
   unset opts
@@ -103,8 +108,16 @@ put_ab() {
   done
   
   tty -s && {
-    echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
-    read
+    while true; do
+      echo "$pname: Please unlock the phone. Ok [yes/skip one/quit all] ?">&2
+      read answer
+      case "${answer,,}" in
+      yes|ye|y) break;;
+      skip|ski|sk|s) return 15;;
+      quit|qui|qu|q) return 255;;
+      *) continue;;
+      esac
+    done
   }
   # preparing workaround for some glitch after
   glitchtype=$(get-glitch-type "$devname" "$glitchlist")
@@ -127,16 +140,17 @@ put_ab() {
     wait
     echo >&2
   done
+  return 0
 }
 
 ## put apps' data files into /data/data/PKGNAME/
 put_data() {
   test $# -eq 0 &&
-    { echo "$pname data: archive file(s) required.">&2; return;}
+    { echo "$pname data: archive file(s) required.">&2; return 1;}
   source "$dotfile"
 
   unset opts
-  removep=false
+  local removep=false
   while true; do
     case "$1" in
     -r) removep=true; shift;;
@@ -145,17 +159,17 @@ put_data() {
     esac
   done
   
-  remote_tmp=/data/local/tmp
+  local remote_tmp=/data/local/tmp
   for archive; do
     echo -n "$archive: ">&2
-    pkg=$(basename ${archive%.tar.gz})
+    local pkg=$(basename ${archive%.tar.gz})
     test -s "$archive" ||
       { echo "$archive: file not exist or size=0.">&2; continue; }
-    datadir=$(adb_shell pm dump "$pkg"|sed -n '/^ *dataDir=/{s///;p;q;}')
-    owner=$(adb_shell su -c ls -ld "$datadir" | awk '{print $2 ":" $3;}')
+    local datadir=$(adb_shell pm dump "$pkg"|sed -n '/^ *dataDir=/{s///;p;q;}')
+    local owner=$(adb_shell su -c ls -ld "$datadir" | awk '{print $2 ":" $3;}')
     
-    remote_archive="$remote_tmp/$(basename $archive)"
-    rm_remote_archive="run adb_shell rm -f $remote_archive"
+    local remote_archive="$remote_tmp/$(basename $archive)"
+    local rm_remote_archive="run adb_shell rm -f $remote_archive"
     trap "$rm_remote_archive" 2
     run_adb push "$archive" "$remote_tmp"
     $removep && adb_shell su -c rm -rf "$datadir/*" "$datadir/.[!.]*"
@@ -167,6 +181,7 @@ put_data() {
     
     echo >&2
   done
+  return 0
 }
 
 
@@ -176,16 +191,28 @@ put_data() {
 unset serial
 verbosep=false
 dryrunp=false
+helpp=false
+opterrp=false
+declare -a opts
 while true; do
   case "$1" in
-  -s) serial="$2"; shift 2;;
-  -v|--verbose) verbosep=true; shift;;
-  -n|--dryrun) dryrunp=true; verbosep=true; shift;;
-  -*) echo "$pname: $1: unknown option.">&2; shift; exit 1;;
+  -|--) break;;
+  --*) opts=("$1"); shift;;
+  -*) for n in $(seq 1 $((${#1}-1))); do opts[$n]="-${1:$n:1}"; done; shift;;
   *) break;;
   esac
+  for opt in "${opts[@]}"; do
+    case "$opt" in
+    -s) serial="$2"; shift;;
+    -v|--verbose) verbosep=true;;
+    -n|--dryrun) dryrunp=true; verbosep=true;;
+    -h|--help) helpp=true;;
+    -*) echo "$pname: $opt: unknown option.">&2; opterrp=true;;
+    esac
+  done
 done
-test $# -eq 0 && { echo "$usage"; exit 0; }
+$opterrp && exit 1
+$helpp || test $# -eq 0 && { echo "$usage" | $xpager; exit 0;}
 cmd="$1"
 shift
 

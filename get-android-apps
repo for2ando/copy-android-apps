@@ -4,12 +4,14 @@ dname=$(dirname "$0")
 dotfile=$(ls ./dot-android-apps 2>/dev/null || echo ~/.android-apps)
 glitchlist=$(ls ./adb-backup-glitch.list 2>/dev/null ||
   echo ~/etc/adb-backup-glitch.list)
+xpager=$(which pageless 2>/dev/null || ${PAGER:-less})
 usage="$pname [OPTIONS] list [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
-$pname [OPTIONS] apk PKGNAME [...]
-$pname [OPTIONS] ab PKGNAME [...]
-$pname [OPTIONS] data PKGNAME [...]
+$pname [OPTIONS] [FILEOPTION] apk PKGNAME [...]
+$pname [OPTIONS] [FILEOPTION] ab PKGNAME [...]
+$pname [OPTIONS] [FILEOPTION] data PKGNAME [...]
 $pname [OPTIONS] listapk [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
 $pname [OPTIONS] singleapk APKNAME [...]
+$pname {-h|--help}
 
 OPTIONS
   -s SERIAL
@@ -20,6 +22,14 @@ OPTIONS
     -q|--quiet|-s|--silent.
   -n|--dryrun
     Only messages displayed, No SAADirectory is made.
+  -h|--help
+    This help message is displayed.
+
+FILEOPTION
+  -g|--gotten GottenFileName
+    log the names of gotten files (.apk, .ab, .tar.gz, etc.) to a
+    text file named: GottenFileName. If the path: GottenFileName is exist,
+    overwrite it.
 
 SUBCOMAMANDS
   $pname list [-{d|e|s|3}] [-u] [PKG_FILTER [...]]
@@ -117,7 +127,7 @@ list_apk_names() {
 ## get each apps' apk using adb pull
 get_apks() {
   test $# -eq 0 &&
-    { echo "$pname apk: Package name(s) required.">&2; return;}
+    { echo "$pname apk: Package name(s) required.">&2; return 1;}
   
   unset opts
   while true; do
@@ -132,17 +142,21 @@ get_apks() {
     local apkPath
     local apkPathes=$(adb_shell pm path "$pkg" | sed 's/^package://;s/\r$//')
     for apkPath in $apkPathes; do
+      local apkname="$(basename $apkPath)"
+      local newapkPath="$pkg-$apkname"
       run_adb pull$opts "$apkPath" &&
-        mv $(basename "$apkPath") "$pkg-$(basename $apkPath)"
+         run mv "$apkname" "$newapkPath" &&
+            test -n "$gotten" && echo "$newapkPath">>"$gotten"
     done
     echo >&2
   done | grep '^[^[]'
+  return 0
 }
 
 ## get each apps' apk using adb pull
 get_single_apk() {
   test $# -eq 0 &&
-    { echo "$pname get_single_apk: APK name(s) required.">&2; return;}
+    { echo "$pname get_single_apk: APK name(s) required.">&2; return 1;}
   
   unset opts
   while true; do
@@ -160,17 +174,20 @@ get_single_apk() {
     local apkPathes=$(adb_shell pm path "$pkgName" |
       sed 's/^package://;s/\r$//')
     for apkPath in $apkPathes; do
+      local newapkName="$pkgName-$apkName"
       test $(basename "$apkPath") = "$apkName" &&
         run_adb pull$opts "$apkPath" &&
-          mv "$apkName" "$pkgName-$apkName"
+          run mv "$apkName" "$newapkName" &&
+            test -n "$gotten" && echo "$newapkName">>"$gotten"
     done
   done
+  return 0
 }
 
 ## get each apps' data using adb backup
 get_ab() {
   test $# -eq 0 &&
-    { echo "$pname data: Package name(s) required.">&2;return;}
+    { echo "$pname data: Package name(s) required.">&2;return 1;}
   source "$dotfile"
   
   unset opts
@@ -181,10 +198,18 @@ get_ab() {
     esac
   done
   
-  tty -s && {
-    echo "$pname: Please unlock the phone. Ok (Press the enter key) ?">&2
-    read
-  }
+  $dryrunp || { tty -s && {
+    while true; do
+      echo "$pname: Please unlock the phone. Ok [yes/skip one/quit all] ?">&2
+      read answer
+      case "${answer,,}" in
+      yes|ye|y) break;;
+      skip|ski|sk|s) return 15;;
+      quit|qui|qu|q) return 255;;
+      *) ;;
+      esac
+    done
+  };}
   # preparing workaround for some glitch after
   glitchtype=$(get-glitch-type "$devname" "$glitchlist")
   test "$glitchtype" -eq 1 &&
@@ -209,14 +234,16 @@ get_ab() {
         esac
       fi
 
-      retryp=false
+      local retryp=false
       wait
-      test -s "$pkg.ab" && break
-      echo "$pname: $pkg.ab: has size=0. Retry (Y/N) ?">&2
-      while read answer; do
-        case "$answer" in
-        y|Y) break 1;;
-        n|N) break 2;;
+      { test -s "$pkg.ab" || $dryrunp;} &&
+        { test -n "$gotten" && echo "$pkg.ab">>"$gotten"; break;}
+      while true; do
+        echo "$pname: $pkg.ab: has size=0. Retry (yes/no) ?">&2
+        read answer
+        case "$answer,," in
+        yes|ye|y) break 1;;
+        no|n) break 2;;
         *) ;;
         esac
       done
@@ -224,16 +251,17 @@ get_ab() {
     done
     echo >&2
   done
+  return 0
 }
 
 get_datadir() {
   test $# -ne 2 && {
     echo "$pname: FATAL: get_datadir(): Two argument required.">&2
-    exit 255
+    exit 254
   }
   pkg="$1"
   pmdump="$2"
-  run adb_shell pm dump "$pkg" >"$pmdump"
+  dryrunp=false run adb_shell pm dump "$pkg" >"$pmdump"
   fgrep -q "Unable to find package: $pkg" "$pmdump" && {
     echo "$pname: $pkg: package doesn't exist.">&2
     return 1
@@ -246,7 +274,7 @@ get_datadir() {
 ## get each apps' /data/data directory snapshot using tar
 get_data() {
   test $# -eq 0 &&
-    { echo "$pname data: Package name(s) required.">&2;return;}
+    { echo "$pname data: Package name(s) required.">&2;return 1;}
   source "$dotfile"
   
   unset opts
@@ -262,18 +290,21 @@ get_data() {
   
   for pkg; do
     echo -n "$pkg: ">&2
-    dstfile=$pkg.tar.gz
-    datadir=$(get_datadir "$pkg" "$pmdump") || continue
+    local dstfile=$pkg.tar.gz
+    local datadir=$(get_datadir "$pkg" "$pmdump") || continue
     test -n "$datadir" && adb_return_result $sucmd test -d "$datadir" || {
       echo "remote directory \"$datadir\" is not exist nor readbale.">&2
       continue
     }
-    run adb_shell $sucmd tar -cf - -C "$datadir" . | gzip -c >"$dstfile"
+    run adb_shell $sucmd tar -cf - -C "$datadir" . |
+      { $dryrunp || gzip -c >"$dstfile";} &&
+        test -n "$gotten" && echo "$dstfile">>"$gotten"
     echo >&2
   done
   
   rm -f "$pmdump"
   trap EXIT SIGINT SIGHUP SIGQUIT SIGTERM
+  return 0
 }
 
 
@@ -283,19 +314,38 @@ get_data() {
 unset serial
 verbosep=false
 dryrunp=false
+gotten=
+helpp=false
+opterrp=false
+declare -a opts
 while true; do
   case "$1" in
-  -s) serial="$2"; shift 2;;
-  -v|--verbose) verbosep=true; shift;;
-  -n|--dryrun) dryrunp=true; verbosep=true; shift;;
-  -*) echo "$pname: $1: unknown option.">&2; shift; exit 2;;
+  -|--) break;;
+  --*) opts=("$1"); shift;;
+  -*) for n in $(seq 1 $((${#1}-1))); do opts[$n]="-${1:$n:1}"; done; shift;;
   *) break;;
   esac
+  for opt in "${opts[@]}"; do
+    case "$opt" in
+    -s) serial="$2"; shift ;;
+    -v|--verbose) verbosep=true;;
+    -n|--dryrun) dryrunp=true; verbosep=true;;
+    -g|--gotten) gotten="$1"; shift;;
+    -h|--help) helpp=true;;
+    -*) echo "$pname: $opt: unknown option.">&2; opterrp=true;;
+    esac
+  done
 done
-test $# -eq 0 && { echo "$usage"; exit 0; }
+$opterrp && exit 1
+$helpp || test $# -eq 0 && { echo "$usage" | $xpager; exit 0;}
 cmd="$1"
 shift
 
+test -n "$gotten" && {
+  test -d "$gotten" &&
+    { echo "$pname: $gotten: exists as directory.">&2; exit 3;}
+  test -f "$gotten" || >"$gotten"
+}
 nadev=$(number_of_adb_devices)
 if [ $nadev -eq 0 ]; then
   echo "$pname: No remote adb devices.">&2
